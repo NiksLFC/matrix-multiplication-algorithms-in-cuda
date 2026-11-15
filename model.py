@@ -120,10 +120,10 @@ float time_launch_ms(matmul_launch_fn launch, const float* d_A, const float* d_B
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
 
-    dim3 block(16, 16);
-    dim3 grid((N+16-1)/16, (M+16-1)/16);
+    // dim3 block(16, 16);
+    // dim3 grid((N+16-1)/16, (M+16-1)/16);
 
-    launch<<<grid, block>>>(d_A, d_B, d_C, M, N, K);
+    launch(d_A, d_B, d_C, M, N, K);
     cudaDeviceSynchronize();
 
     float total_time = 0.0;
@@ -131,7 +131,7 @@ float time_launch_ms(matmul_launch_fn launch, const float* d_A, const float* d_B
 
     for (int i=0; i<iters; i++) {
         cudaEventRecord(start);
-        launch<<<grid, block>>>(d_A, d_B, d_C, M, N, K);
+        launch(d_A, d_B, d_C, M, N, K);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&iter_time, start, stop);
@@ -144,8 +144,8 @@ float time_launch_ms(matmul_launch_fn launch, const float* d_A, const float* d_B
 }
 
 double matmul_gflops(int M, int N, int K, float ms) {
-    double total_flops = (2 * M * N * K) / 1e9;
-    double gflops = total_flops /(ms * 1e-3);
+    double total_flops = (2.0 * M * N * K);
+    double gflops = total_flops /(ms * 1e-3)/ 1e9;
     return gflops;
 
 }
