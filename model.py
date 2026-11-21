@@ -150,8 +150,58 @@ double matmul_gflops(int M, int N, int K, float ms) {
 
 }
 
-# Step 6 - matmul_tiled_kernel (not yet solved)
-# TODO: implement
+# Step 6 - matmul_tiled_kernel
+#include <cuda_runtime.h>
+
+constexpr int TILE = 16;
+
+__global__ void matmul_tiled_kernel(const float* A, const float* B, float* C, int M, int N, int K) {
+    //__shared__ As[TILE][TILE], Bs[TILE][TILE]; loop over K tiles: guarded loads, sync, 16 FMAs, sync
+    __shared__ float As[TILE][TILE];
+    __shared__ float Bs[TILE][TILE];
+
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
+    const size_t row = size_t(blockIdx.y) * TILE + ty;
+    const size_t col = size_t(blockIdx.x) * TILE + tx;
+    float sum = 0.0f;
+
+    for (size_t k0 = 0; k0 < K; k0 += TILE) {
+        const size_t a_col = k0 + tx;
+        const size_t b_row = k0 + ty;
+
+        As[ty][tx] = (row < M && a_col < K) ? A[row * K + a_col] : 0.0f;
+        Bs[ty][tx] = (b_row < K && col < N) ? B[b_row * N + col] : 0.0f;
+        __syncthreads();  // Both tiles must be ready before use.
+
+        for (int k = 0; k < TILE; ++k) {
+            sum += As[ty][k] * Bs[k][tx];
+        }
+        __syncthreads();  // Finish reading before anyone overwrites the tiles.
+    }
+
+    if (row < M && col < N) {
+        C[row * N + col] = sum;
+    }
+}
+
+void launch_matmul_tiled(const float* A, const float* B, float* C, int M, int N, int K) {
+    float* d_A;
+    float* d_B;
+    float* d_C;
+
+    cudaMalloc(&d_A, sizeof(float) * M * K);
+    cudaMalloc(&d_B, sizeof(float) * N * K);
+    cudaMalloc(&d_C, sizeof(float) * M * N);
+    cudaMemcpy(d_A, A, sizeof(float) * M * K, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B, sizeof(float) * N * K, cudaMemcpyHostToDevice);
+
+    dim3 block(16, 16);
+    dim3 grid((N+16-1)/16, (M+16-1)/16);
+
+    matmul_tiled_kernel<<<grid, block>>>(d_A, d_B, d_C, M, N, K);
+    cudaMemcpy(C, d_C, sizeof(float)*M*N, cudaMemcpyDeviceToHost);
+}
 
 # Step 7 - matmul_tiled_1d_kernel (not yet solved)
 # TODO: implement
